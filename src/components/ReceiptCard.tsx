@@ -22,7 +22,7 @@ export function ReceiptCard({ order, isExport = false }: ReceiptCardProps) {
     >
       {/* Header Struk */}
       <div className="flex items-center justify-between w-full">
-        <BrandLogo />
+        <BrandLogo variant={isExport ? "solid" : "default"} />
         <div className="flex flex-col items-end gap-[2px] whitespace-nowrap">
           <span className="font-bold text-[12px] leading-[16px] text-[#ec4899]">
             #{order.orderId}

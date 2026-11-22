@@ -2,21 +2,32 @@ import React from "react";
 
 interface BrandLogoProps {
   className?: string;
+  variant?: "default" | "solid";
 }
 
-export function BrandLogo({ className = "" }: BrandLogoProps) {
+export function BrandLogo({
+  className = "",
+  variant = "default",
+}: BrandLogoProps) {
   return (
-    <div className={`flex items-center gap-[8px] shrink-0 ${className}`}>
+    <div className={`flex items-center gap-[6px] shrink-0 ${className}`}>
       <img
         src="/assets/icons/brand-logo.svg"
-        alt="Odiyuki"
-        width={24}
-        height={24}
+        alt="Odiyuki Craft"
+        width={36}
+        height={36}
         crossOrigin="anonymous"
-        className="w-[24px] h-[24px] shrink-0 block"
+        className="w-[36px] h-[36px] shrink-0 block"
       />
-      <span className="font-bold text-[18px] leading-[24px] text-[#1f2937] whitespace-nowrap">
-        Odiyuki
+      <span
+        style={{ fontFamily: "var(--font-inria-sans), sans-serif" }}
+        className={`font-bold text-[16px] leading-[24px] whitespace-nowrap ${
+          variant === "solid"
+            ? "text-[#4b2138]"
+            : "bg-gradient-to-b from-[#1f2937] to-[#a1205f] bg-clip-text text-transparent"
+        }`}
+      >
+        Odiyuki Craft
       </span>
     </div>
   );

@@ -120,7 +120,7 @@ export function CatalogClient() {
   return (
     <MobileShell>
       {/* Sticky Top Header */}
-      <header className="sticky top-0 z-20 bg-white px-[16px] pt-[14px] pb-[12px] flex flex-col gap-[12px]">
+      <header className="sticky top-0 z-20 bg-white px-[16px] py-[16px] flex flex-col gap-[16px]">
         <div className="flex items-center justify-between w-full">
           <BrandLogo />
           <div className="flex items-center gap-[8px]">
@@ -199,15 +199,15 @@ export function CatalogClient() {
       </header>
 
       {/* Product Grid Body */}
-      <main className="flex-1 px-[16px] pt-[6px] pb-[24px]">
+      <main className="flex-1 px-[16px] pt-[6px] pb-[16px] flex flex-col gap-[14px]">
         {selectedCategory && !isLoading && (
-          <p className="font-medium text-[11px] leading-[15px] text-[#9ca3af] mb-[12px]">
+          <p className="font-medium text-[11px] leading-[15px] text-[#9ca3af]">
             Menampilkan {totalCount} produk di kategori {selectedCategory.name}
           </p>
         )}
 
         {errorMsg && (
-          <div className="bg-[#fef2f2] border border-[#fecaca] text-[#dc2626] rounded-[16px] p-[14px] text-[13px] mb-[14px]">
+          <div className="bg-[#fef2f2] border border-[#fecaca] text-[#dc2626] rounded-[16px] p-[14px] text-[13px]">
             {errorMsg}
           </div>
         )}
