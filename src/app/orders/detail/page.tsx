@@ -1,23 +1,39 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { MobileShell } from "@/components/MobileShell";
 import { ReceiptCard } from "@/components/ReceiptCard";
 import { HiddenReceiptTemplate } from "@/components/HiddenReceiptTemplate";
 import { ShareFallbackModal } from "@/components/ShareFallbackModal";
+import { fetchStoreSettings } from "@/lib/catalog-service";
 import {
   generateReceiptPngBlob,
   shareOrDownloadOrderNote,
 } from "@/lib/receipt-export";
-import { triggerDownloadBlob } from "@/lib/whatsapp";
+import { DEFAULT_STORE_SETTINGS, triggerDownloadBlob } from "@/lib/whatsapp";
 import { useVisitorStore } from "@/store/useVisitorStore";
+import type { StoreSettings } from "@/types";
 
-export default function OrderReceiptPreviewPage() {
-  const params = useParams<{ id: string }>();
+function OrderReceiptSkeleton() {
+  return (
+    <MobileShell className="bg-[#f6f6f6]">
+      <div className="bg-white px-[16px] pt-[14px] pb-[12px] flex items-center gap-[12px]">
+        <div className="w-[38px] h-[38px] rounded-full bg-[#f3f4f6] animate-pulse" />
+        <div className="h-[24px] w-[180px] bg-[#f3f4f6] rounded animate-pulse" />
+      </div>
+      <div className="p-[16px]">
+        <div className="h-[380px] bg-white rounded-[20px] animate-pulse" />
+      </div>
+    </MobileShell>
+  );
+}
+
+function OrderReceiptPreviewContent() {
+  const searchParams = useSearchParams();
   const router = useRouter();
-  const orderId = params?.id;
+  const orderId = searchParams.get("id");
 
   const savedOrders = useVisitorStore((s) => s.savedOrders);
   const hasHydrated = useVisitorStore((s) => s.hasHydrated);
@@ -27,10 +43,28 @@ export default function OrderReceiptPreviewPage() {
     null
   );
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [fallbackSummary, setFallbackSummary] = useState<string | null>(null);
+  const [fallbackData, setFallbackData] = useState<{
+    summaryText: string;
+    copiedImage: boolean;
+  } | null>(null);
+  const [storeSettings, setStoreSettings] = useState<StoreSettings>(
+    DEFAULT_STORE_SETTINGS
+  );
+
+  useEffect(() => {
+    let active = true;
+    fetchStoreSettings()
+      .then((settings) => {
+        if (active) setStoreSettings(settings);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const order = useMemo(
-    () => savedOrders.find((o) => o.orderId === orderId) || null,
+    () => (orderId ? savedOrders.find((o) => o.orderId === orderId) || null : null),
     [savedOrders, orderId]
   );
 
@@ -39,9 +73,16 @@ export default function OrderReceiptPreviewPage() {
     setIsProcessing("share");
     setStatusMessage(null);
     try {
-      const result = await shareOrDownloadOrderNote(order, receiptRef.current);
+      const result = await shareOrDownloadOrderNote(
+        order,
+        receiptRef.current,
+        storeSettings.owner_wa_phone
+      );
       if (result.mode === "fallback") {
-        setFallbackSummary(result.summaryText);
+        setFallbackData({
+          summaryText: result.summaryText,
+          copiedImage: result.copiedImage,
+        });
       }
     } catch (err) {
       if (!(err instanceof Error && err.name === "AbortError")) {
@@ -69,17 +110,7 @@ export default function OrderReceiptPreviewPage() {
   };
 
   if (!hasHydrated) {
-    return (
-      <MobileShell className="bg-[#f6f6f6]">
-        <div className="bg-white px-[16px] pt-[14px] pb-[12px] flex items-center gap-[12px]">
-          <div className="w-[38px] h-[38px] rounded-full bg-[#f3f4f6] animate-pulse" />
-          <div className="h-[24px] w-[180px] bg-[#f3f4f6] rounded animate-pulse" />
-        </div>
-        <div className="p-[16px]">
-          <div className="h-[380px] bg-white rounded-[20px] animate-pulse" />
-        </div>
-      </MobileShell>
-    );
+    return <OrderReceiptSkeleton />;
   }
 
   if (!order) {
@@ -120,7 +151,6 @@ export default function OrderReceiptPreviewPage() {
 
   return (
     <MobileShell className="bg-[#f6f6f6]">
-      {/* TopHeader */}
       <header className="sticky top-0 z-20 bg-white flex items-center gap-[12px] px-[16px] pt-[14px] pb-[12px]">
         <button
           type="button"
@@ -141,7 +171,6 @@ export default function OrderReceiptPreviewPage() {
         </h1>
       </header>
 
-      {/* Receipt Preview Body */}
       <main className="flex-1 px-[16px] py-[14px] flex flex-col gap-[12px]">
         <ReceiptCard order={order} />
 
@@ -152,7 +181,6 @@ export default function OrderReceiptPreviewPage() {
         )}
       </main>
 
-      {/* Sticky Actions */}
       <footer className="sticky bottom-0 z-20 bg-white px-[16px] pt-[12px] pb-[14px] shadow-[0px_-4px_16px_0px_rgba(0,0,0,0.08)] flex flex-col gap-[8px]">
         <button
           type="button"
@@ -179,15 +207,25 @@ export default function OrderReceiptPreviewPage() {
       <HiddenReceiptTemplate order={order} receiptRef={receiptRef} />
 
       <ShareFallbackModal
-        isOpen={Boolean(fallbackSummary)}
+        isOpen={Boolean(fallbackData)}
         orderId={order.orderId}
-        summaryText={fallbackSummary || ""}
-        onClose={() => setFallbackSummary(null)}
+        summaryText={fallbackData?.summaryText || ""}
+        ownerPhone={storeSettings.owner_wa_phone}
+        copiedImage={fallbackData?.copiedImage}
+        onClose={() => setFallbackData(null)}
         onGoToOrders={() => {
-          setFallbackSummary(null);
+          setFallbackData(null);
           router.push("/orders");
         }}
       />
     </MobileShell>
+  );
+}
+
+export default function OrderReceiptPreviewPage() {
+  return (
+    <Suspense fallback={<OrderReceiptSkeleton />}>
+      <OrderReceiptPreviewContent />
+    </Suspense>
   );
 }

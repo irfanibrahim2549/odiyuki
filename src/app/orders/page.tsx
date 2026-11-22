@@ -115,7 +115,8 @@ export default function OrdersHistoryPage() {
                   >
                     <div className="flex items-center justify-between gap-[8px] w-full">
                       <Link
-                        href={`/orders/${order.orderId}`}
+                        href={`/orders/detail?id=${order.orderId}`}
+                        prefetch={false}
                         className="font-bold text-[12px] leading-[16px] text-[#ec4899] hover:underline"
                       >
                         #{order.orderId}
@@ -148,7 +149,8 @@ export default function OrdersHistoryPage() {
                     </div>
 
                     <Link
-                      href={`/orders/${order.orderId}`}
+                      href={`/orders/detail?id=${order.orderId}`}
+                      prefetch={false}
                       className="flex flex-col gap-[10px] w-full"
                     >
                       <div className="flex items-center gap-[8px] w-full">

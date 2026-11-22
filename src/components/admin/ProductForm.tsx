@@ -228,7 +228,7 @@ export function ProductForm({ mode, initialProduct }: ProductFormProps) {
               Foto Produk (Maks. 5 Foto) *
             </label>
             <span className="text-[11px] text-[#9ca3af]">
-              {images.length}/5 • Auto-compress
+              {images.length}/5 • WebP &lt;150KB
             </span>
           </div>
 

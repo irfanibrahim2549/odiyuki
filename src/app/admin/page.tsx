@@ -7,25 +7,38 @@ import {
   ExternalLink,
   FolderKanban,
   LogOut,
+  MessageCircle,
   Pencil,
   Plus,
   Search,
   Trash2,
 } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
+import { AdminAuthGuard } from "@/components/admin/AdminAuthGuard";
 import { CategoryManagerSheet } from "@/components/admin/CategoryManagerSheet";
+import { WhatsAppSettingsSheet } from "@/components/admin/WhatsAppSettingsSheet";
 import {
   deleteProduct,
   fetchCategories,
   fetchProducts,
+  fetchStoreSettings,
   toggleProductAvailability,
 } from "@/lib/catalog-service";
 import { formatRupiah } from "@/lib/format";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { DEMO_ADMIN_COOKIE, isSupabaseConfigured } from "@/lib/supabase/config";
-import type { Category, Product } from "@/types";
+import { DEFAULT_STORE_SETTINGS } from "@/lib/whatsapp";
+import type { Category, Product, StoreSettings } from "@/types";
 
 export default function AdminDashboardPage() {
+  return (
+    <AdminAuthGuard>
+      <AdminDashboardContent />
+    </AdminAuthGuard>
+  );
+}
+
+function AdminDashboardContent() {
   const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -34,18 +47,24 @@ export default function AdminDashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isCategorySheetOpen, setIsCategorySheetOpen] = useState(false);
+  const [isWaSheetOpen, setIsWaSheetOpen] = useState(false);
+  const [storeSettings, setStoreSettings] = useState<StoreSettings>(
+    DEFAULT_STORE_SETTINGS
+  );
   const [confirmDeleteProduct, setConfirmDeleteProduct] =
     useState<Product | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
-      const [cats, prods] = await Promise.all([
+      const [cats, prods, settings] = await Promise.all([
         fetchCategories(),
         fetchProducts(),
+        fetchStoreSettings(),
       ]);
       setCategories(cats);
       setProducts(prods);
+      setStoreSettings(settings);
       setErrorMsg(null);
     } catch (err) {
       setErrorMsg(
@@ -60,13 +79,15 @@ export default function AdminDashboardPage() {
     let active = true;
     async function init() {
       try {
-        const [cats, prods] = await Promise.all([
+        const [cats, prods, settings] = await Promise.all([
           fetchCategories(),
           fetchProducts(),
+          fetchStoreSettings(),
         ]);
         if (!active) return;
         setCategories(cats);
         setProducts(prods);
+        setStoreSettings(settings);
         setErrorMsg(null);
       } catch (err) {
         if (!active) return;
@@ -158,8 +179,8 @@ export default function AdminDashboardPage() {
       {/* Sticky Top Header */}
       <header className="sticky top-0 z-20 bg-white border-b border-[#e5e7eb] px-[16px] pt-[14px] pb-[12px] flex flex-col gap-[12px]">
         <div className="flex items-center justify-between gap-[8px]">
-          <div>
-            <h1 className="font-bold text-[19px] leading-[24px] text-[#1f2937]">
+          <div className="min-w-0">
+            <h1 className="font-bold text-[18px] leading-[24px] text-[#1f2937] truncate">
               Kelola Katalog
             </h1>
             <p className="text-[11px] text-[#9ca3af]">
@@ -167,18 +188,18 @@ export default function AdminDashboardPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-[6px]">
+          <div className="flex items-center gap-[5px] shrink-0">
             <Link
               href="/"
               title="Lihat Katalog Pengunjung"
-              className="w-[36px] h-[36px] rounded-full bg-[#f6f6f6] hover:bg-[#eeeeee] flex items-center justify-center text-[#1f2937] transition-colors"
+              className="w-[34px] h-[34px] rounded-full bg-[#f6f6f6] hover:bg-[#eeeeee] flex items-center justify-center text-[#1f2937] transition-colors"
             >
               <ExternalLink className="w-[16px] h-[16px]" />
             </Link>
             <button
               type="button"
               onClick={() => setIsCategorySheetOpen(true)}
-              className="h-[36px] px-[12px] rounded-full bg-[#fce7f3] hover:bg-[#fbcfe8] text-[#ec4899] font-semibold text-[12px] flex items-center gap-[5px] cursor-pointer transition-colors"
+              className="h-[34px] px-[12px] rounded-full bg-[#fce7f3] hover:bg-[#fbcfe8] text-[#ec4899] font-semibold text-[12px] flex items-center gap-[5px] cursor-pointer transition-colors"
             >
               <FolderKanban className="w-[15px] h-[15px]" />
               <span>Kategori</span>
@@ -188,12 +209,32 @@ export default function AdminDashboardPage() {
               onClick={handleLogout}
               title="Keluar"
               aria-label="Logout"
-              className="w-[36px] h-[36px] rounded-full bg-[#f6f6f6] hover:bg-[#fef2f2] text-[#1f2937] hover:text-[#ef4444] flex items-center justify-center cursor-pointer transition-colors"
+              className="w-[34px] h-[34px] rounded-full bg-[#f6f6f6] hover:bg-[#fef2f2] text-[#1f2937] hover:text-[#ef4444] flex items-center justify-center cursor-pointer transition-colors"
             >
               <LogOut className="w-[16px] h-[16px]" />
             </button>
           </div>
         </div>
+
+        {/* Info Banner Nomor WA Owner Aktif */}
+        <button
+          type="button"
+          onClick={() => setIsWaSheetOpen(true)}
+          className="w-full bg-[#edfcf5] hover:bg-[#d1fae5]/70 border border-[#a7f3d0]/70 rounded-[12px] px-[12px] py-[7px] flex items-center justify-between gap-[8px] cursor-pointer transition-colors"
+        >
+          <div className="flex items-center gap-[6px] min-w-0">
+            <MessageCircle className="w-[14px] h-[14px] text-[#059669] shrink-0" />
+            <span className="text-[11px] text-[#065f46] truncate">
+              WA Owner:{" "}
+              <strong className="font-bold">
+                {storeSettings.owner_wa_display}
+              </strong>
+            </span>
+          </div>
+          <span className="text-[11px] font-bold text-[#059669] shrink-0">
+            Ubah Nomor
+          </span>
+        </button>
 
         {/* Search Input */}
         <div className="relative flex items-center">
@@ -270,7 +311,7 @@ export default function AdminDashboardPage() {
                 className="bg-white border border-[#e5e7eb] rounded-[16px] p-[12px] flex items-center gap-[12px] shadow-[0px_1px_4px_rgba(0,0,0,0.03)]"
               >
                 <Link
-                  href={`/admin/product/${product.id}`}
+                  href={`/admin/product/edit?id=${product.id}`}
                   className="w-[60px] h-[60px] rounded-[12px] overflow-hidden bg-[#f6f6f6] shrink-0 relative"
                 >
                   <img
@@ -292,7 +333,7 @@ export default function AdminDashboardPage() {
                     </span>
                   </div>
                   <Link
-                    href={`/admin/product/${product.id}`}
+                    href={`/admin/product/edit?id=${product.id}`}
                     className="font-semibold text-[13px] leading-[18px] text-[#1f2937] line-clamp-2 hover:text-[#ec4899] transition-colors"
                   >
                     {product.name}
@@ -337,7 +378,7 @@ export default function AdminDashboardPage() {
 
                   <div className="flex items-center gap-[4px]">
                     <Link
-                      href={`/admin/product/${product.id}`}
+                      href={`/admin/product/edit?id=${product.id}`}
                       aria-label={`Edit ${product.name}`}
                       className="w-[30px] h-[30px] rounded-[10px] bg-[#f6f6f6] hover:bg-[#fce7f3] text-[#1f2937] hover:text-[#ec4899] flex items-center justify-center transition-colors"
                     >
@@ -377,6 +418,14 @@ export default function AdminDashboardPage() {
         products={products}
         onClose={() => setIsCategorySheetOpen(false)}
         onUpdated={loadData}
+      />
+
+      {/* Bottom Sheet Pengaturan Nomor WhatsApp Owner */}
+      <WhatsAppSettingsSheet
+        isOpen={isWaSheetOpen}
+        currentSettings={storeSettings}
+        onClose={() => setIsWaSheetOpen(false)}
+        onSaved={(nextSettings) => setStoreSettings(nextSettings)}
       />
 
       {/* Bottom Sheet Konfirmasi Hapus Produk */}

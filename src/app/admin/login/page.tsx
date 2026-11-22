@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import type { Session } from "@supabase/supabase-js";
 import { MobileShell } from "@/components/MobileShell";
 import { BrandLogo } from "@/components/BrandLogo";
+import { hasDemoAdminCookie } from "@/components/admin/AdminAuthGuard";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { DEMO_ADMIN_COOKIE, isSupabaseConfigured } from "@/lib/supabase/config";
 
@@ -16,6 +18,24 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState(isLiveSupabase ? "" : "admin123");
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isLiveSupabase) {
+      if (hasDemoAdminCookie()) {
+        router.replace("/admin");
+      }
+      return;
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    supabase?.auth
+      .getSession()
+      .then(({ data: { session } }: { data: { session: Session | null } }) => {
+        if (session?.user) {
+          router.replace("/admin");
+        }
+      });
+  }, [isLiveSupabase, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

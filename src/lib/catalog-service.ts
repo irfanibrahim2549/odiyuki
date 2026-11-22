@@ -2,10 +2,18 @@ import imageCompression from "browser-image-compression";
 import { getSupabaseBrowserClient } from "./supabase/client";
 import { isSupabaseConfigured } from "./supabase/config";
 import { SEED_CATEGORIES, SEED_PRODUCTS } from "./seed-data";
-import type { Category, Product } from "@/types";
+import { DEFAULT_STORE_SETTINGS, normalizeWhatsAppInput } from "./whatsapp";
+import type {
+  CatalogProductCard,
+  Category,
+  PaginatedCatalogResult,
+  Product,
+  StoreSettings,
+} from "@/types";
 
 const DEMO_CATEGORIES_KEY = "odiyuki-demo-categories";
 const DEMO_PRODUCTS_KEY = "odiyuki-demo-products";
+const DEMO_SETTINGS_KEY = "odiyuki-demo-store-settings";
 const STORAGE_BUCKET = "product-images";
 
 function readDemoCategories(): Category[] {
@@ -88,6 +96,106 @@ export async function fetchCategories(): Promise<Category[]> {
 
   if (error) throw new Error(error.message);
   return (data || []) as Category[];
+}
+
+export async function fetchCatalogProductsPage({
+  categoryId = "all",
+  page = 1,
+  pageSize = 12,
+}: {
+  categoryId?: string;
+  page?: number;
+  pageSize?: number;
+} = {}): Promise<PaginatedCatalogResult> {
+  const safePage = Math.max(1, page);
+  const safeSize = Math.min(Math.max(1, pageSize), 16);
+  const from = (safePage - 1) * safeSize;
+  const to = from + safeSize - 1;
+
+  if (!isSupabaseConfigured()) {
+    const cats = readDemoCategories();
+    const catMap = new Map(cats.map((c) => [c.id, c]));
+    const filtered = readDemoProducts()
+      .filter((p) => categoryId === "all" || p.category_id === categoryId)
+      .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+
+    const totalCount = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(totalCount / safeSize));
+    const items: CatalogProductCard[] = filtered.slice(from, to + 1).map((p) => {
+      const cat = catMap.get(p.category_id);
+      return {
+        id: p.id,
+        sku: p.sku,
+        name: p.name,
+        price: p.price,
+        category_id: p.category_id,
+        category_name: cat?.name || p.category_name,
+        cover_image: p.images[0] || "/assets/products/kc-001.png",
+        is_available: p.is_available,
+      };
+    });
+
+    return { items, totalCount, page: safePage, pageSize: safeSize, totalPages };
+  }
+
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) {
+    return {
+      items: [],
+      totalCount: 0,
+      page: safePage,
+      pageSize: safeSize,
+      totalPages: 1,
+    };
+  }
+
+  let query = supabase
+    .from("products")
+    .select("id, sku, name, price, category_id, images, is_available, categories(name)", {
+      count: "exact",
+    })
+    .order("created_at", { ascending: false })
+    .range(from, to);
+
+  if (categoryId && categoryId !== "all") {
+    query = query.eq("category_id", categoryId);
+  }
+
+  const { data, count, error } = await query;
+  if (error) throw new Error(error.message);
+
+  const totalCount = count ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / safeSize));
+
+  type SlimRow = {
+    id: string;
+    sku: string;
+    name: string;
+    price: number;
+    category_id: string;
+    images: string[] | null;
+    is_available: boolean;
+    categories?: { name: string } | { name: string }[] | null;
+  };
+
+  const items: CatalogProductCard[] = ((data || []) as SlimRow[]).map((row) => {
+    const cat = Array.isArray(row.categories)
+      ? row.categories[0]
+      : row.categories;
+    const imgs = Array.isArray(row.images) ? row.images : [];
+    return {
+      id: row.id,
+      sku: row.sku,
+      name: row.name,
+      price: row.price,
+      category_id: row.category_id,
+      category_name: cat?.name || "Aksesoris",
+      cover_image: imgs[0] || "/assets/products/kc-001.png",
+      is_available: Boolean(row.is_available),
+    };
+  });
+
+  return { items, totalCount, page: safePage, pageSize: safeSize, totalPages };
 }
 
 export async function fetchProducts(): Promise<Product[]> {
@@ -245,9 +353,9 @@ export async function compressAndUploadProductImages(
   files: File[]
 ): Promise<string[]> {
   const compressionOptions = {
-    maxSizeMB: 0.6,
-    maxWidthOrHeight: 1000,
-    initialQuality: 0.8,
+    maxSizeMB: 0.145,
+    maxWidthOrHeight: 900,
+    initialQuality: 0.78,
     useWebWorker: true,
     fileType: "image/webp" as const,
   };
@@ -476,4 +584,79 @@ export async function deleteProduct(product: Product): Promise<void> {
   if (product.images.length > 0) {
     await cleanupStorageImages(product.images);
   }
+}
+
+function readDemoStoreSettings(): StoreSettings {
+  if (typeof window === "undefined") return DEFAULT_STORE_SETTINGS;
+  try {
+    const raw = window.localStorage.getItem(DEMO_SETTINGS_KEY);
+    if (!raw) return DEFAULT_STORE_SETTINGS;
+    const parsed = JSON.parse(raw) as StoreSettings;
+    if (parsed?.owner_wa_phone && parsed?.owner_wa_display) {
+      return parsed;
+    }
+    return DEFAULT_STORE_SETTINGS;
+  } catch {
+    return DEFAULT_STORE_SETTINGS;
+  }
+}
+
+export async function fetchStoreSettings(): Promise<StoreSettings> {
+  if (!isSupabaseConfigured()) {
+    return readDemoStoreSettings();
+  }
+
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) return readDemoStoreSettings();
+
+  const { data, error } = await supabase
+    .from("store_settings")
+    .select("owner_wa_phone, owner_wa_display")
+    .eq("id", "default")
+    .maybeSingle();
+
+  if (error || !data) {
+    return DEFAULT_STORE_SETTINGS;
+  }
+
+  return {
+    owner_wa_phone: data.owner_wa_phone,
+    owner_wa_display: data.owner_wa_display,
+  };
+}
+
+export async function updateStoreSettings(
+  rawPhone: string
+): Promise<StoreSettings> {
+  const normalized = normalizeWhatsAppInput(rawPhone);
+
+  if (!isSupabaseConfigured()) {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(DEMO_SETTINGS_KEY, JSON.stringify(normalized));
+    }
+    return normalized;
+  }
+
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) throw new Error("Supabase client tidak tersedia.");
+
+  const { data, error } = await supabase
+    .from("store_settings")
+    .upsert(
+      {
+        id: "default",
+        owner_wa_phone: normalized.owner_wa_phone,
+        owner_wa_display: normalized.owner_wa_display,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "id" }
+    )
+    .select("owner_wa_phone, owner_wa_display")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return {
+    owner_wa_phone: data.owner_wa_phone,
+    owner_wa_display: data.owner_wa_display,
+  };
 }

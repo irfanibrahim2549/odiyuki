@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { MobileShell } from "@/components/MobileShell";
 import { fetchProductById } from "@/lib/catalog-service";
@@ -9,13 +9,34 @@ import { formatRupiah } from "@/lib/format";
 import { useVisitorStore } from "@/store/useVisitorStore";
 import type { Product } from "@/types";
 
-export default function ProductDetailPage() {
-  const params = useParams<{ id: string }>();
+function ProductDetailSkeleton() {
+  return (
+    <MobileShell>
+      <div className="px-[16px] pt-[14px] pb-[12px] flex items-center justify-between">
+        <div className="w-[40px] h-[40px] rounded-full bg-[#f3f4f6] animate-pulse" />
+        <div className="w-[72px] h-[26px] rounded-full bg-[#f3f4f6] animate-pulse" />
+      </div>
+      <div className="px-[16px] flex flex-col gap-[16px] animate-pulse">
+        <div className="aspect-square w-full rounded-[24px] bg-[#f3f4f6]" />
+        <div className="flex gap-[10px]">
+          <div className="w-[48px] h-[48px] rounded-[12px] bg-[#f3f4f6]" />
+          <div className="w-[48px] h-[48px] rounded-[12px] bg-[#f3f4f6]" />
+        </div>
+        <div className="h-[16px] w-[80px] rounded bg-[#f3f4f6]" />
+        <div className="h-[28px] w-4/5 rounded bg-[#f3f4f6]" />
+        <div className="h-[28px] w-2/5 rounded bg-[#f3f4f6]" />
+      </div>
+    </MobileShell>
+  );
+}
+
+function ProductDetailContent() {
+  const searchParams = useSearchParams();
   const router = useRouter();
-  const productId = params?.id;
+  const productId = searchParams.get("id");
 
   const [product, setProduct] = useState<Product | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(Boolean(productId));
   const [activeIndex, setActiveIndex] = useState<number>(0);
   const [justAdded, setJustAdded] = useState<boolean>(false);
 
@@ -28,10 +49,9 @@ export default function ProductDetailPage() {
   useEffect(() => {
     if (!productId) return;
     let active = true;
-    async function load() {
-      setIsLoading(true);
+    async function load(id: string) {
       try {
-        const found = await fetchProductById(productId);
+        const found = await fetchProductById(id);
         if (!active) return;
         setProduct(found);
         setActiveIndex(0);
@@ -39,7 +59,7 @@ export default function ProductDetailPage() {
         if (active) setIsLoading(false);
       }
     }
-    load();
+    load(productId);
     return () => {
       active = false;
     };
@@ -82,25 +102,8 @@ export default function ProductDetailPage() {
     router.push("/");
   };
 
-  if (isLoading) {
-    return (
-      <MobileShell>
-        <div className="px-[16px] pt-[14px] pb-[12px] flex items-center justify-between">
-          <div className="w-[40px] h-[40px] rounded-full bg-[#f3f4f6] animate-pulse" />
-          <div className="w-[72px] h-[26px] rounded-full bg-[#f3f4f6] animate-pulse" />
-        </div>
-        <div className="px-[16px] flex flex-col gap-[16px] animate-pulse">
-          <div className="aspect-square w-full rounded-[24px] bg-[#f3f4f6]" />
-          <div className="flex gap-[10px]">
-            <div className="w-[48px] h-[48px] rounded-[12px] bg-[#f3f4f6]" />
-            <div className="w-[48px] h-[48px] rounded-[12px] bg-[#f3f4f6]" />
-          </div>
-          <div className="h-[16px] w-[80px] rounded bg-[#f3f4f6]" />
-          <div className="h-[28px] w-4/5 rounded bg-[#f3f4f6]" />
-          <div className="h-[28px] w-2/5 rounded bg-[#f3f4f6]" />
-        </div>
-      </MobileShell>
-    );
+  if (productId && isLoading) {
+    return <ProductDetailSkeleton />;
   }
 
   if (!product) {
@@ -179,7 +182,6 @@ export default function ProductDetailPage() {
             className="w-full h-full object-cover"
           />
 
-          {/* Tap areas for quick desktop/tap prev & next when >1 image */}
           {images.length > 1 && (
             <>
               <button
@@ -263,7 +265,6 @@ export default function ProductDetailPage() {
           </div>
         </div>
 
-        {/* Feedback Toast / Quick Checkout Hint */}
         {qtyInCart > 0 && (
           <div className="bg-[#fce7f3] rounded-[16px] px-[14px] py-[10px] flex items-center justify-between gap-[10px]">
             <span className="font-semibold text-[12px] text-[#ec4899]">
@@ -273,6 +274,7 @@ export default function ProductDetailPage() {
             </span>
             <Link
               href="/checkout"
+              prefetch={false}
               className="font-bold text-[12px] text-[#db2777] underline underline-offset-2 whitespace-nowrap"
             >
               Lihat Checkout
@@ -301,5 +303,13 @@ export default function ProductDetailPage() {
         </button>
       </footer>
     </MobileShell>
+  );
+}
+
+export default function ProductDetailPage() {
+  return (
+    <Suspense fallback={<ProductDetailSkeleton />}>
+      <ProductDetailContent />
+    </Suspense>
   );
 }

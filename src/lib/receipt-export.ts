@@ -50,11 +50,34 @@ export async function generateReceiptPngBlob(
 export interface ShareOrderResult {
   mode: "native-share" | "fallback";
   summaryText: string;
+  copiedImage: boolean;
+}
+
+async function copyImageBlobToClipboard(blob: Blob): Promise<boolean> {
+  if (
+    typeof navigator === "undefined" ||
+    !navigator.clipboard?.write ||
+    typeof ClipboardItem === "undefined"
+  ) {
+    return false;
+  }
+
+  try {
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        "image/png": blob,
+      }),
+    ]);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function shareOrDownloadOrderNote(
   order: OrderNote,
-  receiptElement: HTMLElement
+  receiptElement: HTMLElement,
+  ownerPhone?: string
 ): Promise<ShareOrderResult> {
   const blob = await generateReceiptPngBlob(receiptElement);
   const filename = `Order-Notes-${order.orderId}.png`;
@@ -75,7 +98,7 @@ export async function shareOrDownloadOrderNote(
         title: `Order Notes #${order.orderId}`,
         text: summaryText,
       });
-      return { mode: "native-share", summaryText };
+      return { mode: "native-share", summaryText, copiedImage: false };
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
         throw err;
@@ -84,20 +107,14 @@ export async function shareOrDownloadOrderNote(
   }
 
   // Mode 2: Desktop / Unsupported Browser Fallback
+  // Salin GAMBAR PNG ke clipboard selagi tab masih fokus agar user tinggal Ctrl+V di WhatsApp!
+  const copiedImage = await copyImageBlobToClipboard(blob);
   triggerDownloadBlob(blob, filename);
 
-  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(summaryText);
-    } catch {
-      // Ignore clipboard permission errors
-    }
-  }
-
-  const waUrl = buildWhatsAppUrl(summaryText);
+  const waUrl = buildWhatsAppUrl(summaryText, ownerPhone);
   if (typeof window !== "undefined") {
     window.open(waUrl, "_blank", "noopener,noreferrer");
   }
 
-  return { mode: "fallback", summaryText };
+  return { mode: "fallback", summaryText, copiedImage };
 }

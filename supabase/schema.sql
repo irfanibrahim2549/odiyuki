@@ -56,7 +56,11 @@ FOR EACH ROW
 WHEN (NEW.sku IS NULL OR NEW.sku = '')
 EXECUTE FUNCTION generate_product_sku();
 
--- 4. Row Level Security (RLS) untuk tabel categories & products
+-- 4. Permissions (GRANT) & Row Level Security (RLS) untuk tabel categories & products
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+GRANT SELECT ON TABLE categories, products TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE categories, products TO authenticated;
+
 ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 
@@ -142,3 +146,41 @@ INSERT INTO categories (name, prefix) VALUES
   ('Strap HP', 'ST'),
   ('Pin & Brooch', 'PB')
 ON CONFLICT (name) DO NOTHING;
+
+-- 7. Tabel Pengaturan Toko (Nomor WhatsApp Owner Dinamis)
+CREATE TABLE IF NOT EXISTS store_settings (
+  id TEXT PRIMARY KEY DEFAULT 'default',
+  owner_wa_phone TEXT NOT NULL,
+  owner_wa_display TEXT NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+GRANT SELECT ON TABLE store_settings TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE store_settings TO authenticated;
+
+ALTER TABLE store_settings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Public can view store settings" ON store_settings;
+CREATE POLICY "Public can view store settings"
+ON store_settings FOR SELECT
+TO anon, authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Authenticated can insert store settings" ON store_settings;
+CREATE POLICY "Authenticated can insert store settings"
+ON store_settings FOR INSERT
+TO authenticated
+WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Authenticated can update store settings" ON store_settings;
+CREATE POLICY "Authenticated can update store settings"
+ON store_settings FOR UPDATE
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+INSERT INTO store_settings (id, owner_wa_phone, owner_wa_display)
+VALUES ('default', '6285850757148', '0858-5075-7148')
+ON CONFLICT (id) DO UPDATE SET
+  owner_wa_phone = EXCLUDED.owner_wa_phone,
+  owner_wa_display = EXCLUDED.owner_wa_display;

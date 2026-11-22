@@ -18,6 +18,25 @@ export interface Product {
   created_at?: string;
 }
 
+export interface CatalogProductCard {
+  id: string;
+  sku: string;
+  name: string;
+  price: number;
+  category_id: string;
+  category_name: string;
+  cover_image: string;
+  is_available: boolean;
+}
+
+export interface PaginatedCatalogResult {
+  items: CatalogProductCard[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
 export interface CartItem {
   productId: string;
   sku: string;
@@ -41,4 +60,9 @@ export interface OrderNote {
   items: CartItem[];
   totalAmount: number;
   totalQty: number;
+}
+
+export interface StoreSettings {
+  owner_wa_phone: string;
+  owner_wa_display: string;
 }

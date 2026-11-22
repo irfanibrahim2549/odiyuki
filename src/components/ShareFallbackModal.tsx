@@ -8,6 +8,8 @@ interface ShareFallbackModalProps {
   isOpen: boolean;
   orderId: string;
   summaryText: string;
+  ownerPhone?: string;
+  copiedImage?: boolean;
   onClose: () => void;
   onGoToOrders: () => void;
 }
@@ -16,12 +18,14 @@ export function ShareFallbackModal({
   isOpen,
   orderId,
   summaryText,
+  ownerPhone,
+  copiedImage = false,
   onClose,
   onGoToOrders,
 }: ShareFallbackModalProps) {
   if (!isOpen) return null;
 
-  const waUrl = buildWhatsAppUrl(summaryText);
+  const waUrl = buildWhatsAppUrl(summaryText, ownerPhone);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#121726]/55 px-[16px]">
@@ -77,15 +81,18 @@ export function ShareFallbackModal({
               Order-Notes-{orderId}.png
             </p>
             <p className="font-medium text-[11px] leading-[15px] text-[#059669]">
-              Terunduh otomatis • Teks sudah disalin
+              {copiedImage
+                ? "Gambar disalin ke clipboard & terunduh otomatis"
+                : "Terunduh otomatis ke perangkat"}
             </p>
           </div>
         </div>
 
         {/* Instruction */}
         <p className="font-medium text-[13px] leading-[18px] text-[#9ca3af]">
-          Gambar Order Notes telah terunduh otomatis. Silakan tempel/lampirkan
-          gambar tersebut di chat WhatsApp yang terbuka.
+          {copiedImage
+            ? "Di WhatsApp Desktop/Web, langsung tekan Ctrl+V (Tempel) di kolom chat untuk melampirkan gambar Order Notes bersama teks pesanan."
+            : "Gambar Order Notes telah terunduh otomatis. Silakan lampirkan gambar tersebut di chat WhatsApp yang terbuka."}
         </p>
 
         {/* Actions */}

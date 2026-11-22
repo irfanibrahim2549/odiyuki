@@ -1,16 +1,17 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MobileShell } from "@/components/MobileShell";
 import { HiddenReceiptTemplate } from "@/components/HiddenReceiptTemplate";
 import { ShareFallbackModal } from "@/components/ShareFallbackModal";
+import { fetchStoreSettings } from "@/lib/catalog-service";
 import { formatRupiah, generateOrderId } from "@/lib/format";
 import { shareOrDownloadOrderNote } from "@/lib/receipt-export";
-import { OWNER_WA_DISPLAY } from "@/lib/whatsapp";
+import { DEFAULT_STORE_SETTINGS } from "@/lib/whatsapp";
 import { useVisitorStore } from "@/store/useVisitorStore";
-import type { OrderNote } from "@/types";
+import type { OrderNote, StoreSettings } from "@/types";
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -37,11 +38,27 @@ export default function CheckoutPage() {
   const [copiedOwner, setCopiedOwner] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [storeSettings, setStoreSettings] = useState<StoreSettings>(
+    DEFAULT_STORE_SETTINGS
+  );
+
+  useEffect(() => {
+    let active = true;
+    fetchStoreSettings()
+      .then((settings) => {
+        if (active) setStoreSettings(settings);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const [pendingOrder, setPendingOrder] = useState<OrderNote | null>(null);
   const [fallbackModalData, setFallbackModalData] = useState<{
     orderId: string;
     summaryText: string;
+    copiedImage: boolean;
   } | null>(null);
 
   const nameInputRef = useRef<HTMLInputElement | null>(null);
@@ -59,7 +76,7 @@ export default function CheckoutPage() {
   );
 
   const handleCopyOwnerPhone = async () => {
-    const raw = OWNER_WA_DISPLAY.replace(/[^0-9]/g, "");
+    const raw = storeSettings.owner_wa_display.replace(/[^0-9]/g, "");
     try {
       await navigator.clipboard.writeText(raw);
       setCopiedOwner(true);
@@ -124,22 +141,27 @@ export default function CheckoutPage() {
       }
 
       saveOrderNote(order);
-      const result = await shareOrDownloadOrderNote(order, receiptRef.current);
+      const result = await shareOrDownloadOrderNote(
+        order,
+        receiptRef.current,
+        storeSettings.owner_wa_phone
+      );
       clearCart();
 
       if (result.mode === "native-share") {
-        router.push(`/orders/${order.orderId}`);
+        router.push(`/orders/detail?id=${order.orderId}`);
       } else {
         setFallbackModalData({
           orderId: order.orderId,
           summaryText: result.summaryText,
+          copiedImage: result.copiedImage,
         });
       }
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
         // User menutup share sheet di mobile; pesanan sudah tersimpan di Riwayat
         clearCart();
-        router.push(`/orders/${order.orderId}`);
+        router.push(`/orders/detail?id=${order.orderId}`);
         return;
       }
       setSubmitError(
@@ -411,7 +433,7 @@ export default function CheckoutPage() {
                   WhatsApp Owner
                 </span>
                 <span className="font-bold text-[13px] leading-[18px] text-[#1f2937]">
-                  {OWNER_WA_DISPLAY}
+                  {storeSettings.owner_wa_display}
                 </span>
               </div>
               <button
@@ -470,10 +492,12 @@ export default function CheckoutPage() {
         isOpen={Boolean(fallbackModalData)}
         orderId={fallbackModalData?.orderId || ""}
         summaryText={fallbackModalData?.summaryText || ""}
+        ownerPhone={storeSettings.owner_wa_phone}
+        copiedImage={fallbackModalData?.copiedImage}
         onClose={() => {
           const id = fallbackModalData?.orderId;
           setFallbackModalData(null);
-          if (id) router.push(`/orders/${id}`);
+          if (id) router.push(`/orders/detail?id=${id}`);
           else router.push("/orders");
         }}
         onGoToOrders={() => {

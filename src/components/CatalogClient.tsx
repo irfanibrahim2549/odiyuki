@@ -2,17 +2,26 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { MobileShell } from "./MobileShell";
 import { BrandLogo } from "./BrandLogo";
-import { fetchCategories, fetchProducts } from "@/lib/catalog-service";
+import {
+  fetchCatalogProductsPage,
+  fetchCategories,
+} from "@/lib/catalog-service";
 import { formatRupiah } from "@/lib/format";
 import { useVisitorStore } from "@/store/useVisitorStore";
-import type { Category, Product } from "@/types";
+import type { CatalogProductCard, Category } from "@/types";
+
+const CATALOG_PAGE_SIZE = 12;
 
 export function CatalogClient() {
   const [categories, setCategories] = useState<Category[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<CatalogProductCard[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("all");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [totalCount, setTotalCount] = useState<number>(0);
+  const [totalPages, setTotalPages] = useState<number>(1);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -20,18 +29,36 @@ export function CatalogClient() {
   const savedOrders = useVisitorStore((s) => s.savedOrders);
   const hasHydrated = useVisitorStore((s) => s.hasHydrated);
 
+  // Ambil kategori sekali langsung dari browser ke Supabase
   useEffect(() => {
     let active = true;
-    async function load() {
+    fetchCategories()
+      .then((cats) => {
+        if (active) setCategories(cats);
+      })
+      .catch(() => {
+        // Error ditangani pada fetch katalog
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Ambil produk per halaman (12 produk) langsung dari browser ke Supabase
+  useEffect(() => {
+    let active = true;
+    async function loadPage() {
       try {
         setIsLoading(true);
-        const [cats, prods] = await Promise.all([
-          fetchCategories(),
-          fetchProducts(),
-        ]);
+        const result = await fetchCatalogProductsPage({
+          categoryId: selectedCategoryId,
+          page: currentPage,
+          pageSize: CATALOG_PAGE_SIZE,
+        });
         if (!active) return;
-        setCategories(cats);
-        setProducts(prods);
+        setProducts(result.items);
+        setTotalCount(result.totalCount);
+        setTotalPages(result.totalPages);
         setErrorMsg(null);
       } catch (err) {
         if (!active) return;
@@ -42,11 +69,27 @@ export function CatalogClient() {
         if (active) setIsLoading(false);
       }
     }
-    load();
+    loadPage();
     return () => {
       active = false;
     };
-  }, []);
+  }, [selectedCategoryId, currentPage]);
+
+  const handleSelectCategory = (categoryId: string) => {
+    if (categoryId === selectedCategoryId) return;
+    setSelectedCategoryId(categoryId);
+    setCurrentPage(1);
+  };
+
+  const handlePageChange = (nextPage: number) => {
+    if (nextPage < 1 || nextPage > totalPages || nextPage === currentPage) {
+      return;
+    }
+    setCurrentPage(nextPage);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
 
   const cartQtyMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -74,11 +117,6 @@ export function CatalogClient() {
     [categories, selectedCategoryId]
   );
 
-  const filteredProducts = useMemo(() => {
-    if (selectedCategoryId === "all") return products;
-    return products.filter((p) => p.category_id === selectedCategoryId);
-  }, [products, selectedCategoryId]);
-
   return (
     <MobileShell>
       {/* Sticky Top Header */}
@@ -88,6 +126,7 @@ export function CatalogClient() {
           <div className="flex items-center gap-[8px]">
             <Link
               href="/orders"
+              prefetch={false}
               className="bg-[#fce7f3] hover:bg-[#fbcfe8] transition-colors flex items-center gap-[6px] pl-[12px] pr-[10px] py-[6px] rounded-full shrink-0"
             >
               <span className="font-semibold text-[12px] leading-[16px] text-[#ec4899] whitespace-nowrap">
@@ -111,7 +150,7 @@ export function CatalogClient() {
         >
           <button
             type="button"
-            onClick={() => setSelectedCategoryId("all")}
+            onClick={() => handleSelectCategory("all")}
             className={`flex items-center gap-[6px] py-[7px] rounded-full text-[12px] leading-[16px] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
               selectedCategoryId === "all"
                 ? "bg-[#ec4899] text-white font-semibold pl-[12px] pr-[14px]"
@@ -136,7 +175,7 @@ export function CatalogClient() {
               <button
                 key={cat.id}
                 type="button"
-                onClick={() => setSelectedCategoryId(cat.id)}
+                onClick={() => handleSelectCategory(cat.id)}
                 className={`flex items-center gap-[6px] py-[7px] rounded-full text-[12px] leading-[16px] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
                   isActive
                     ? "bg-[#ec4899] text-white font-semibold pl-[12px] pr-[14px]"
@@ -163,8 +202,7 @@ export function CatalogClient() {
       <main className="flex-1 px-[16px] pt-[6px] pb-[24px]">
         {selectedCategory && !isLoading && (
           <p className="font-medium text-[11px] leading-[15px] text-[#9ca3af] mb-[12px]">
-            Menampilkan {filteredProducts.length} produk di kategori{" "}
-            {selectedCategory.name}
+            Menampilkan {totalCount} produk di kategori {selectedCategory.name}
           </p>
         )}
 
@@ -185,7 +223,7 @@ export function CatalogClient() {
               </div>
             ))}
           </div>
-        ) : filteredProducts.length === 0 ? (
+        ) : products.length === 0 ? (
           <div className="py-[56px] flex flex-col items-center text-center gap-[8px]">
             <p className="font-semibold text-[15px] text-[#1f2937]">
               Belum ada produk di kategori ini
@@ -196,7 +234,7 @@ export function CatalogClient() {
             {selectedCategoryId !== "all" && (
               <button
                 type="button"
-                onClick={() => setSelectedCategoryId("all")}
+                onClick={() => handleSelectCategory("all")}
                 className="mt-[8px] bg-[#fce7f3] text-[#ec4899] font-semibold text-[13px] px-[16px] py-[8px] rounded-full cursor-pointer"
               >
                 Tampilkan Semua
@@ -204,82 +242,120 @@ export function CatalogClient() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-x-[12px] gap-y-[14px]">
-            {filteredProducts.map((product) => {
-              const qtyInCart = cartQtyMap.get(product.id) || 0;
-              const coverImg =
-                product.images[0] || "/assets/products/kc-001.png";
+          <>
+            <div className="grid grid-cols-2 gap-x-[12px] gap-y-[14px]">
+              {products.map((product) => {
+                const qtyInCart = cartQtyMap.get(product.id) || 0;
+                const coverImg =
+                  product.cover_image || "/assets/products/kc-001.png";
 
-              const cardContent = (
-                <>
-                  <div className="relative aspect-square w-full bg-[#f6f6f6] rounded-[16px] overflow-hidden">
-                    <img
-                      src={coverImg}
-                      alt={product.name}
-                      className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
-                    />
-                    {product.is_available && qtyInCart > 0 && (
-                      <div className="absolute top-[8px] right-[8px] bg-[#ec4899] px-[8px] py-[3px] rounded-full">
-                        <span className="font-bold text-[11px] leading-[15px] text-white block">
-                          {qtyInCart}x
-                        </span>
-                      </div>
-                    )}
-                    {!product.is_available && (
-                      <>
-                        <div className="absolute inset-0 bg-[#1f2938]/45" />
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <span className="bg-[#222222] text-white font-bold text-[12px] leading-[16px] px-[12px] py-[5px] rounded-full">
-                            Habis
+                const cardContent = (
+                  <>
+                    <div className="relative aspect-square w-full bg-[#f6f6f6] rounded-[16px] overflow-hidden">
+                      <img
+                        src={coverImg}
+                        alt={product.name}
+                        loading="lazy"
+                        decoding="async"
+                        className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
+                      />
+                      {product.is_available && qtyInCart > 0 && (
+                        <div className="absolute top-[8px] right-[8px] bg-[#ec4899] px-[8px] py-[3px] rounded-full">
+                          <span className="font-bold text-[11px] leading-[15px] text-white block">
+                            {qtyInCart}x
                           </span>
                         </div>
-                      </>
-                    )}
-                  </div>
+                      )}
+                      {!product.is_available && (
+                        <>
+                          <div className="absolute inset-0 bg-[#1f2938]/45" />
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="bg-[#222222] text-white font-bold text-[12px] leading-[16px] px-[12px] py-[5px] rounded-full">
+                              Habis
+                            </span>
+                          </div>
+                        </>
+                      )}
+                    </div>
 
-                  <div className="flex flex-col gap-[3px] w-full">
-                    <h2 className="font-semibold text-[14px] leading-[19px] text-[#1f2937] line-clamp-2">
-                      {product.name}
-                    </h2>
-                    <p className="font-medium text-[11px] leading-[15px] text-[#9ca3af] truncate">
-                      {product.category_name} • {product.sku}
-                    </p>
-                    <p
-                      className={`font-bold text-[14px] leading-[20px] ${
-                        product.is_available
-                          ? "text-[#1f2937]"
-                          : "text-[#9ca3af]"
-                      }`}
+                    <div className="flex flex-col gap-[3px] w-full">
+                      <h2 className="font-semibold text-[14px] leading-[19px] text-[#1f2937] line-clamp-2">
+                        {product.name}
+                      </h2>
+                      <p className="font-medium text-[11px] leading-[15px] text-[#9ca3af] truncate">
+                        {product.category_name} • {product.sku}
+                      </p>
+                      <p
+                        className={`font-bold text-[14px] leading-[20px] ${
+                          product.is_available
+                            ? "text-[#1f2937]"
+                            : "text-[#9ca3af]"
+                        }`}
+                      >
+                        {formatRupiah(product.price)}
+                      </p>
+                    </div>
+                  </>
+                );
+
+                if (!product.is_available) {
+                  return (
+                    <div
+                      key={product.id}
+                      aria-disabled="true"
+                      className="flex flex-col gap-[8px] items-start w-full cursor-not-allowed"
                     >
-                      {formatRupiah(product.price)}
-                    </p>
-                  </div>
-                </>
-              );
+                      {cardContent}
+                    </div>
+                  );
+                }
 
-              if (!product.is_available) {
                 return (
-                  <div
+                  <Link
                     key={product.id}
-                    aria-disabled="true"
-                    className="flex flex-col gap-[8px] items-start w-full cursor-not-allowed"
+                    href={`/product?id=${product.id}`}
+                    prefetch={false}
+                    className="group flex flex-col gap-[8px] items-start w-full"
                   >
                     {cardContent}
-                  </div>
+                  </Link>
                 );
-              }
+              })}
+            </div>
 
-              return (
-                <Link
-                  key={product.id}
-                  href={`/product/${product.id}`}
-                  className="group flex flex-col gap-[8px] items-start w-full"
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <nav
+                aria-label="Navigasi halaman katalog"
+                className="mt-[20px] flex items-center justify-between gap-[10px] pt-[12px] border-t border-[#f3f4f6]"
+              >
+                <button
+                  type="button"
+                  disabled={currentPage <= 1}
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  className="h-[38px] px-[12px] rounded-full bg-[#f3f4f6] hover:bg-[#e5e7eb] disabled:opacity-45 text-[#1f2937] font-semibold text-[12px] flex items-center gap-[4px] cursor-pointer disabled:cursor-not-allowed transition-colors"
                 >
-                  {cardContent}
-                </Link>
-              );
-            })}
-          </div>
+                  <ChevronLeft className="w-[15px] h-[15px]" />
+                  <span>Sebelumnya</span>
+                </button>
+
+                <span className="text-[12px] font-semibold text-[#9ca3af]">
+                  Hal. <strong className="text-[#1f2937]">{currentPage}</strong>{" "}
+                  / {totalPages}
+                </span>
+
+                <button
+                  type="button"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  className="h-[38px] px-[12px] rounded-full bg-[#fce7f3] hover:bg-[#fbcfe8] disabled:bg-[#f3f4f6] disabled:opacity-45 text-[#ec4899] disabled:text-[#9ca3af] font-semibold text-[12px] flex items-center gap-[4px] cursor-pointer disabled:cursor-not-allowed transition-colors"
+                >
+                  <span>Berikutnya</span>
+                  <ChevronRight className="w-[15px] h-[15px]" />
+                </button>
+              </nav>
+            )}
+          </>
         )}
       </main>
 
@@ -287,6 +363,7 @@ export function CatalogClient() {
       <footer className="sticky bottom-0 z-20 bg-white px-[16px] pt-[12px] pb-[14px] shadow-[0px_-4px_16px_0px_rgba(0,0,0,0.08)] flex items-center gap-[12px]">
         <Link
           href={totalQty > 0 ? "/checkout" : "#"}
+          prefetch={false}
           aria-disabled={totalQty === 0}
           onClick={(e) => {
             if (totalQty === 0) e.preventDefault();
@@ -318,6 +395,7 @@ export function CatalogClient() {
         {totalQty > 0 ? (
           <Link
             href="/checkout"
+            prefetch={false}
             className="flex-1 h-[48px] bg-[#222222] hover:bg-[#111111] text-white font-bold text-[14px] leading-[20px] rounded-[16px] flex items-center justify-center px-[16px] transition-colors"
           >
             Checkout • {formatRupiah(totalAmount)}
