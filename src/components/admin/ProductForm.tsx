@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ImagePlus, Star, X } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
+import { ImageCropSheet } from "@/components/admin/ImageCropSheet";
 import {
   compressAndUploadProductImages,
   computeNextSkuPreview,
@@ -46,6 +47,8 @@ export function ProductForm({ mode, initialProduct }: ProductFormProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [cropQueue, setCropQueue] = useState<File[]>([]);
+  const [cropTotalCount, setCropTotalCount] = useState<number>(0);
 
   useEffect(() => {
     let active = true;
@@ -96,7 +99,7 @@ export function ProductForm({ mode, initialProduct }: ProductFormProps) {
     return cleaned ? Number.parseInt(cleaned, 10) : 0;
   }, [priceStr]);
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     e.target.value = "";
     if (files.length === 0) return;
@@ -109,14 +112,30 @@ export function ProductForm({ mode, initialProduct }: ProductFormProps) {
 
     const selected = files.slice(0, remainingSlots);
     setErrorMsg(null);
+    setCropQueue(selected);
+    setCropTotalCount(selected.length);
+  };
+
+  const advanceCropQueue = () => {
+    setCropQueue((prev) => {
+      const next = prev.slice(1);
+      if (next.length === 0) setCropTotalCount(0);
+      return next;
+    });
+  };
+
+  const handleConfirmCrop = async (croppedFile: File) => {
+    setErrorMsg(null);
     setIsUploading(true);
     try {
-      const uploadedUrls = await compressAndUploadProductImages(selected);
-      setImages((prev) => [...prev, ...uploadedUrls]);
+      const uploadedUrls = await compressAndUploadProductImages([croppedFile]);
+      setImages((prev) => [...prev, ...uploadedUrls].slice(0, 5));
+      advanceCropQueue();
     } catch (err) {
       setErrorMsg(
         err instanceof Error ? err.message : "Gagal mengunggah foto."
       );
+      throw err;
     } finally {
       setIsUploading(false);
     }
@@ -431,6 +450,26 @@ export function ProductForm({ mode, initialProduct }: ProductFormProps) {
           {isSaving ? "Menyimpan Produk..." : "Simpan Produk"}
         </button>
       </footer>
+
+      {/* Modal Crop 1:1 Foto Produk */}
+      <ImageCropSheet
+        key={cropQueue[0] ? `${cropQueue[0].name}-${cropQueue[0].size}-${cropQueue.length}` : "empty"}
+        file={cropQueue[0] || null}
+        queuePosition={
+          cropTotalCount > 1
+            ? {
+                current: cropTotalCount - cropQueue.length + 1,
+                total: cropTotalCount,
+              }
+            : undefined
+        }
+        onCancelAll={() => {
+          setCropQueue([]);
+          setCropTotalCount(0);
+        }}
+        onSkipCurrent={advanceCropQueue}
+        onConfirmCrop={handleConfirmCrop}
+      />
     </MobileShell>
   );
 }
